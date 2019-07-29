@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 TRAIN_IMG_SIZE = 200
+
 class_names = [
 "other",
 "blooming dandelion",
@@ -10,7 +11,7 @@ class_names = [
 "unbloomed dandelion",
 "buttercup",
 "grass",
-"dogwood",
+"cow parsley",
 "other flower",
 "road",
 ]
@@ -51,8 +52,10 @@ def classify(img, impath = "./", labpath = "./", file_name = "test"):
 
 
 cv2.destroyAllWindows()
-first = 25
-last = 27
+
+first = 46
+last = 62
+
 for i in range(first,last+1):
     if(i<10):
         path = "../train_data/Unclassified_Images/IMG_0"+str(i)+".JPG"

@@ -37,6 +37,8 @@ def test_classifier(model, image, label):
     plt.ylabel('Probability')
     plt.title('Classifier results')
 
+    plt.show()
+
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -50,7 +52,7 @@ def importData(feat_path, lab_path):
 feature_path = "../train_data/Features/"
 label_path = "../train_data/Labels/"
 
-classifier = "dandelion_model_5.h5"#input("Which classifier will you use? ")
+classifier = "dandelion_model_6.h5"#input("Which classifier will you use? ")
 model = keras.models.load_model(classifier)
 
 #name = input("Which file would you like to see? ")

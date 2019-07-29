@@ -30,9 +30,26 @@ def createSubImages(img):
             subimgList.append(subimg)
     return subimgList
 
+def yelloPixel(pix): #Check if a pixel is yellow
+    r, g, b = pix[0], pix[1], pix[2]
+    val = r < min(g,b)/1.4
+    val = val and min(g,b) > 70
+    val = val and max(g,b) < 1.3*min(g,b)
+
+    return val
+
+def countYellow(img):
+    N = 0
+    for row in img:
+        for pixel in row:
+            if(yelloPixel(pixel)):
+                N += 1
+    return N
+
+
 def findAll(subImages,model):
     out = [0]*len(subImages)
-    predictions = model.predict(np.array(subImages))
+    predictions = model.predict(np.array(subImages)/255)
     searchValues = [1,2,3,4]
     for i in range(len(predictions)):
         m = 0
@@ -41,6 +58,8 @@ def findAll(subImages,model):
                 m = j
         if (m in searchValues):
             out[i] = 1
+        elif(countYellow(subImages[i]) > 10):
+            out[i] =2
 
     return out
 

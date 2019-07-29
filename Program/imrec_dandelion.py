@@ -28,7 +28,7 @@ def sortData(Data, amounts, focus):
     features, labels = Data
     i = 0
     while i < len(labels):
-        if(amounts[labels[i]] > 5*amounts[focus]):
+        if(amounts[labels[i]] > 3*amounts[focus]):
             labels.pop(i)
             features.pop(i)
             class_amounts[labels[i]]-=1
@@ -115,7 +115,13 @@ print("Shape of test data:", test_images.shape)
 
 model = keras.Sequential([
     keras.layers.Flatten(input_shape=(50,50,3)),
-    keras.layers.Dense(64, activation = tf.nn.relu,
+    keras.layers.Dense(32, activation = tf.nn.relu,
+                kernel_initializer='random_uniform',
+                bias_initializer='random_uniform'),
+    keras.layers.Dense(32, activation = tf.nn.relu,
+                kernel_initializer='random_uniform',
+                bias_initializer='random_uniform'),
+    keras.layers.Dense(16, activation = tf.nn.relu,
                 kernel_initializer='random_uniform',
                 bias_initializer='random_uniform'),
     keras.layers.Dense(10,activation = tf.nn.softmax,
@@ -127,8 +133,8 @@ model.compile(optimizer='adam',
               loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
-model.fit(train_images, train_labels, epochs = 30)
-model.save('dandelion_model_5.h5')
+model.fit(train_images, train_labels, epochs = 80)
+model.save('dandelion_model_7.h5')
 test_loss, test_acc = model.evaluate(test_images, test_labels)
 print('Test accuracy:',test_acc)
 

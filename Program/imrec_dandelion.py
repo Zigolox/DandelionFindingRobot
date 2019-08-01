@@ -3,6 +3,10 @@ from __future__ import absolute_import, division, print_function
 # TensorFlow and tf.keras
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow.keras import regularizers
+
+from tensorflow.keras.layers import Dropout, Flatten, Activation, Dense
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, BatchNormalization
 
 # Helper libraries
 import glob, os
@@ -10,25 +14,46 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
+#class_names = [
+#"other",
+#"blooming dandelion",
+#"seeding dandelion",
+#"cleared dandelion",
+#"unbloomed dandelion",
+#"buttercup",
+#"grass",
+#"dogwood",
+#"other flower",
+#"road",
+#]
 class_names = [
 "other",
-"blooming dandelion",
-"seeding dandelion",
-"cleared dandelion",
-"unbloomed dandelion",
-"buttercup",
-"grass",
-"dogwood",
-"other flower",
-"road",
+"dandelion",
+"buttercup"
 ]
 class_amounts = [0]*len(class_names)
+
+def yellowPixel(pix): #Check if a pixel is yellow
+    b, g, r = pix[0], pix[1], pix[2]
+    val = b < min(g,r)/2
+    val = val and min(g,r) > 130
+    val = val and max(g,r) < 1.3*min(g,r)
+
+    return val
+
+def countYellow(img):
+    N = 0
+    for row in img:
+        for pixel in row:
+            if(yellowPixel(pixel)):
+                N += 1
+    return N
 
 def sortData(Data, amounts, focus):
     features, labels = Data
     i = 0
     while i < len(labels):
-        if(amounts[labels[i]] > 3*amounts[focus]):
+        if(amounts[labels[i]] > 1.5*amounts[focus]):
             labels.pop(i)
             features.pop(i)
             class_amounts[labels[i]]-=1
@@ -47,7 +72,9 @@ def readData(feat_path = "../test_feat/", lab_path = "../test_lab/"):
     train_labels = []
     test_img = []
     test_labels = []
-    k = 0
+    k1 = 0
+    k2 = 0
+    k3 = 0
     error = False
     grass_count = 0
     with open("test_files.txt","w+") as test_f:
@@ -70,7 +97,7 @@ def readData(feat_path = "../test_feat/", lab_path = "../test_lab/"):
                     i = f.read()
                     try:
                         i = int(i)
-                        if(i>9):
+                        if(i > 9 or i < 0):
                             continue
                     except ValueError:
                         print("Error: invalid data in file")
@@ -78,12 +105,31 @@ def readData(feat_path = "../test_feat/", lab_path = "../test_lab/"):
                         print("Value: " + i)
                         continue
 
-                lab = i
+                if(i == 1):
+                    lab = 1
+                    k1 += 1
+                elif(i == 5):
+                    lab = 2
+                    k2 += 2
+                else:
+                    lab = 0
+                    k3 += 1
 
-                if(k%20 == 0):
+                if(k1%10 == 0):
                     test_f.write(file_name)
                     test_img.append(img)
                     test_labels.append(lab)
+                    k1+=1
+                elif(k2%10 == 0):
+                    test_f.write(file_name)
+                    test_img.append(img)
+                    test_labels.append(lab)
+                    k2+=1
+                elif(k3%10 == 0):
+                    test_f.write(file_name)
+                    test_img.append(img)
+                    test_labels.append(lab)
+                    k3+=1
 
                 else:
                     train_img.append(img)
@@ -96,13 +142,12 @@ def readData(feat_path = "../test_feat/", lab_path = "../test_lab/"):
                 continue
 
 
-            k+=1
     train_img, train_labels = sortData((train_img,train_labels), class_amounts, 1)
     print(class_amounts)
     return np.array(train_img), np.array(train_labels), np.array(test_img), np.array(test_labels)
 
-feature_path = "../train_data/Features/"
-label_path = "../train_data/Labels/"
+feature_path = "../large_train_data/Features/"
+label_path = "../large_train_data/Labels/"
 
 allData = readData(feature_path,label_path)
 
@@ -113,29 +158,103 @@ print("Shape of test data:", test_images.shape)
 
 
 
+
+
 model = keras.Sequential([
-    keras.layers.Flatten(input_shape=(50,50,3)),
-    keras.layers.Dense(32, activation = tf.nn.relu,
+    Conv2D(32,(2, 2),
+    padding='same',
+    input_shape = (256,256,3),
+    activation = tf.nn.relu,
+    kernel_regularizer=regularizers.l2(1e-8),
+    bias_regularizer=regularizers.l2(1e-8)) ,
+
+    Conv2D(32,(4,4),
+    padding='same',
+    activation = tf.nn.relu,
+    kernel_regularizer=regularizers.l2(1e-8),
+    bias_regularizer=regularizers.l2(1e-8)),
+
+    MaxPooling2D(pool_size=(4, 4)),
+
+    Dropout(0.25),
+
+    Conv2D(32,(2, 2),
+    padding='same',
+    activation = tf.nn.relu,
+    kernel_regularizer=regularizers.l2(1e-8),
+    bias_regularizer=regularizers.l2(1e-8)),
+
+    Conv2D(32,(4,4),
+    padding='same',
+    activation = tf.nn.relu,
+    kernel_regularizer=regularizers.l2(1e-8),
+    bias_regularizer=regularizers.l2(1e-8)),
+
+    MaxPooling2D(pool_size=(3, 3)),
+
+    Dropout(0.25),
+
+    Flatten(),
+
+    Dense(128, activation = tf.nn.relu,
                 kernel_initializer='random_uniform',
-                bias_initializer='random_uniform'),
-    keras.layers.Dense(32, activation = tf.nn.relu,
+                bias_initializer='random_uniform',
+                kernel_regularizer=regularizers.l2(1e-8),
+                activity_regularizer=regularizers.l2(1e-8)),
+
+    Dropout(0.25),
+
+    Dense(64, activation = tf.nn.relu,
                 kernel_initializer='random_uniform',
-                bias_initializer='random_uniform'),
-    keras.layers.Dense(16, activation = tf.nn.relu,
+                bias_initializer='random_uniform',
+                kernel_regularizer=regularizers.l2(1e-8),
+                activity_regularizer=regularizers.l2(1e-8)),
+
+
+    Dense(10,activation = tf.nn.softmax,
                 kernel_initializer='random_uniform',
-                bias_initializer='random_uniform'),
-    keras.layers.Dense(10,activation = tf.nn.softmax,
-                kernel_initializer='random_uniform',
-                bias_initializer='random_uniform')
+                bias_initializer='random_uniform',)
 ])
 
 model.compile(optimizer='adam',
               loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
-model.fit(train_images, train_labels, epochs = 80)
-model.save('dandelion_model_7.h5')
-test_loss, test_acc = model.evaluate(test_images, test_labels)
+lossSetTest = []
+lossSetTrain = []
+accSetTest = []
+accSetTrain = []
+iSet=[]
+for i in range(0,50):
+    model.fit(train_images, train_labels, epochs = 1)
+    test_loss, test_acc = model.evaluate(test_images, test_labels)
+    train_loss, train_acc = model.evaluate(train_images, train_labels)
+    lossSetTest.append(test_loss)
+    lossSetTrain.append(train_loss)
+    accSetTest.append(test_acc)
+    accSetTrain.append(train_acc)
+    iSet.append(i)
+    print("Epoch:",i+1)
+
+plt.figure(figsize=(10,10))
+plt.plot(iSet,accSetTest,"r-",label ="Test")
+plt.plot(iSet,accSetTrain,"b-",label = "Train")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend()
+
+plt.show()
+
+plt.figure(figsize=(10,10))
+plt.plot(iSet,lossSetTest,"r-",label ="Test")
+plt.plot(iSet,lossSetTrain,"b-",label = "Train")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+
+plt.show()
+
+model.save('dandelion_model_8.h5')
 print('Test accuracy:',test_acc)
 
 predictions = model.predict(test_images)

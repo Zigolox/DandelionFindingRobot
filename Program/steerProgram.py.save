@@ -7,33 +7,44 @@ from tensorflow import keras
 import glob, os
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 from math import sin, cos, tan, pi, sqrt, asin
 
 import serial
 from time import sleep
 
-SPLIT_IMG_SIZE = 20
+SPLIT_IMG_SIZE = 256
 PIXLE_ANGLE_CONV = 0.28
 CAMERA_HEIGHT = 200
-CAMERA_ANGLE = 0.87
-CAMERA_POSITION = 40
+CAMERA_ANGLE = 0.30
+CAMERA_POSITION = 400
+
+def readFromCamera():
+    #Read image from camera using opencv cv2
+    pass
+
+def writeToArduino():
+    #Write action to arduino
+    pass
+
 
 def createSubImages(img):
     shape = (img.shape[0], img.shape[1]) #Shape of image
     N, M = shape[0]//SPLIT_IMG_SIZE, shape[1]//SPLIT_IMG_SIZE #amount of subimages
-    print("N,M:", N, M)
     subimgList = [] #List of all subimages
     iCoordinates = []
     jCoordinates = []
     for n in range(N):
         for m in range(M):
             subimg =img[n*SPLIT_IMG_SIZE:(n+1)*SPLIT_IMG_SIZE,m*SPLIT_IMG_SIZE:(m+1)*SPLIT_IMG_SIZE]
+            subimg = cv2.resize(subimg,(50,50))
             subimgList.append(subimg)
-            iCoordinates.append((n*N + SPLIT_IMG_SIZE//2)-N//2)
-            jCoordinates.append(M//2-(m*M + SPLIT_IMG_SIZE//2))
+            iCoordinates.append((n*shape[0] + SPLIT_IMG_SIZE//2)-N//2)
+            jCoordinates.append(M//2-(m*shape[1] + SPLIT_IMG_SIZE//2))
     return subimgList, iCoordinates, jCoordinates
 
 def yellowPixel(pix): #Check if a pixel is yellow
+    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
     h, s, v = pix[0], pix[1], pix[2]
     #lowYellow = np.array([20,50,55])
     #highYellow = np.array([30,255,255])
@@ -42,45 +53,35 @@ def yellowPixel(pix): #Check if a pixel is yellow
 
 def countYellow(img):
     N = 0
-    i = 0
-    lowYellow = np.array([22,51,57])
-    highYellow=np.array([30,200,200])
-    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, lowYellow, highYellow)
-
-    N = cv2.countNonZero(mask)
-    #for row in img:
-    #    for pixel in row:
-    #        if(yellowPixel(pixel)):
-    #            N += 1
-    #        i += 1
-
+    for row in img:
+        for pixel in row:
+            if(yelloPixel(pixel)):
+                N += 1
     return N
 
 
 def findAll(img):
     subImages, iC, jC = createSubImages(img)
-    print("Subimages created")
+
     smallest = 0
 
     out = []
     n = 0
     m = 0
 
-    for i in range(len(subImages)):
-        if(countYellow(subImages[i]) > SPLIT_IMG_SIZE**2//3):
-            out.append((iC[i],jC[i]))
-            if(abs(iC[i] < m or n == 0)):
+    for i in range(subImages):
+        if(countYellow(subImages[i]) > 50):
+            out.append(iC[i],jC[i])
+            if(abs(iC[i] < m or n == 0):
                 smallest = n
                 m = iC[i]
             n += 1
-    print("All yellow found")
 
     return out, smallest
 
 def pixToAngle(i,j,conv): #Calculate angles to located object
-    x = i
-    y = j
+    x = i-W//2
+    y = j-H//2
 
     alpha = tan(conv*x)
     beta = tan(conv*y)
@@ -93,7 +94,7 @@ def calculateDistance(h,alpha, alpha0):
 
 def calcCurveRadius(dis, beta):
     #Calculate radius of curvature from distance to dandelion and angle from heading
-    if(abs(beta) < pi/20):
+    if(abs(beta) < pi/10):
         R = 0
         a = 0
     elif(beta > 0):
@@ -116,7 +117,7 @@ def sendData(R,a):
     sleep(1)
 
 
-ser = serial.Serial("/dev/ttyACM0", 9600)
+ser = serial.Serial"/dev/cu.usbmodem1421", 9600)
 sleep(3)
 
 R = calcCurveRadius(1000*sqrt(5), 0.463647609)
@@ -125,45 +126,23 @@ a = 1
 
 cap = cv2.VideoCapture(0)
 
-
-#if cap.isOpened():
-    #window_handle = cv2.namedWindow('CSI Camera', cv2.WINDOW_AUTOSIZE)
 print("Starting")
+
 
 while(True):
     ret, img = cap.read()
-    #img = cv2.flip(img, 1)
-    #cv2.imshow('CSI Camera',img)
-    # This also acts as 
-    #keyCode = cv2.waitKey(1) & 0xff
-    # Stop the program on the ESC key
-    #if keyCode == 27:
-    #    break
-
-    print("Image Read")
+    img = readFromCamera()
     yellow, smallest = findAll(img)
-    print("Smallest pos:", yellow[smallest][0], yellow[smallest][1])
+
     alpha, beta = pixToAngle(yellow[smallest][0],yellow[smallest][1],PIXLE_ANGLE_CONV)
     D = calculateDistance(CAMERA_HEIGHT,alpha, CAMERA_ANGLE)
-    print("Distance before:", D)
-    print("Angle before:", beta)
 
-    D, beta = realDistance(D, beta, CAMERA_POSITION)
-    print("Distance after:", D)
-    print("Angle after:", beta)
+    D,beta = realDistance(D, beta, CAMERA_POSITION)
+
     R, a = calcCurveRadius(D, beta)
-    print("R, a", R, a)
     sendData(R,a)
-    print("Data sent")
-
-
-    #line = ser.readline()
-    #print("Line read")
-    #line = line.decode("ascii") #ser.readline returns a binary, convert to string
-    #print("Incoming line:",line)
-
-    
-
-cap.release()
-cv2.destroyAllWindows()
-
+    print("R,a:",R,a)
+    line = ser.readline()
+    line = line.decode("ascii") #ser.readline returns a binary, convert to string
+    print(line)
+    sleep(50)

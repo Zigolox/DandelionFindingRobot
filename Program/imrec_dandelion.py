@@ -161,34 +161,34 @@ print("Shape of test data:", test_images.shape)
 
 
 model = keras.Sequential([
-    Conv2D(32,(2, 2),
+    Conv2D(64,(2, 2),
     padding='same',
     input_shape = (256,256,3),
     activation = tf.nn.relu,
-    kernel_regularizer=regularizers.l2(1e-8),
-    bias_regularizer=regularizers.l2(1e-8)) ,
+    kernel_regularizer=regularizers.l2(2e-8),
+    bias_regularizer=regularizers.l2(2e-8)) ,
 
-    Conv2D(32,(4,4),
+    Conv2D(64,(4,4),
     padding='same',
     activation = tf.nn.relu,
-    kernel_regularizer=regularizers.l2(1e-8),
-    bias_regularizer=regularizers.l2(1e-8)),
+    kernel_regularizer=regularizers.l2(2e-8),
+    bias_regularizer=regularizers.l2(2e-8)),
 
-    MaxPooling2D(pool_size=(4, 4)),
+    MaxPooling2D(pool_size=(3, 3)),
 
     Dropout(0.25),
 
     Conv2D(32,(2, 2),
     padding='same',
     activation = tf.nn.relu,
-    kernel_regularizer=regularizers.l2(1e-8),
-    bias_regularizer=regularizers.l2(1e-8)),
+    kernel_regularizer=regularizers.l2(2e-8),
+    bias_regularizer=regularizers.l2(2e-8)),
 
     Conv2D(32,(4,4),
     padding='same',
     activation = tf.nn.relu,
-    kernel_regularizer=regularizers.l2(1e-8),
-    bias_regularizer=regularizers.l2(1e-8)),
+    kernel_regularizer=regularizers.l2(2e-8),
+    bias_regularizer=regularizers.l2(2e-8)),
 
     MaxPooling2D(pool_size=(3, 3)),
 
@@ -199,16 +199,18 @@ model = keras.Sequential([
     Dense(128, activation = tf.nn.relu,
                 kernel_initializer='random_uniform',
                 bias_initializer='random_uniform',
-                kernel_regularizer=regularizers.l2(1e-8),
-                activity_regularizer=regularizers.l2(1e-8)),
+                kernel_regularizer=regularizers.l2(2e-8),
+                activity_regularizer=regularizers.l2(2e-8)),
 
     Dropout(0.25),
 
-    Dense(64, activation = tf.nn.relu,
+    Dense(128, activation = tf.nn.relu,
                 kernel_initializer='random_uniform',
                 bias_initializer='random_uniform',
-                kernel_regularizer=regularizers.l2(1e-8),
-                activity_regularizer=regularizers.l2(1e-8)),
+                kernel_regularizer=regularizers.l2(2e-8),
+                activity_regularizer=regularizers.l2(2e-8)),
+    
+    Dropout(0.25),
 
 
     Dense(10,activation = tf.nn.softmax,
@@ -225,15 +227,17 @@ lossSetTrain = []
 accSetTest = []
 accSetTrain = []
 iSet=[]
-for i in range(0,50):
-    model.fit(train_images, train_labels, epochs = 1)
+for i in range(0,200):
+    train_loss, train_acc = model.fit(train_images, train_labels, epochs = 1)
     test_loss, test_acc = model.evaluate(test_images, test_labels)
-    train_loss, train_acc = model.evaluate(train_images, train_labels)
     lossSetTest.append(test_loss)
     lossSetTrain.append(train_loss)
     accSetTest.append(test_acc)
     accSetTrain.append(train_acc)
     iSet.append(i)
+    model.save('dandelion_model_1.h5')
+    print("Test loss:",test_loss)
+    print("Train loss:",train_loss)
     print("Epoch:",i+1)
 
 plt.figure(figsize=(10,10))
@@ -254,7 +258,6 @@ plt.legend()
 
 plt.show()
 
-model.save('dandelion_model_8.h5')
 print('Test accuracy:',test_acc)
 
 predictions = model.predict(test_images)

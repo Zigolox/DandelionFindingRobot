@@ -8,7 +8,16 @@ import glob, os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-TRAIN_IMG_SIZE = 200
+from math import sin, cos, tan, pi, sqrt, asin
+
+import serial
+from time import sleep
+
+SPLIT_IMG_SIZE = 256
+PIXLE_ANGLE_CONV = 0.28
+CAMERA_HEIGHT = 200
+CAMERA_ANGLE = 0.30
+CAMERA_POSITION = 400
 
 def readFromCamera():
     #Read image from camera using opencv cv2
@@ -21,21 +30,25 @@ def writeToArduino():
 
 def createSubImages(img):
     shape = (img.shape[0], img.shape[1]) #Shape of image
-    N,M = shape[0]//TRAIN_IMG_SIZE, shape[1]//TRAIN_IMG_SIZE #amount of subimages
+    N, M = shape[0]//SPLIT_IMG_SIZE, shape[1]//SPLIT_IMG_SIZE #amount of subimages
     subimgList = [] #List of all subimages
+    iCoordinates = []
+    jCoordinates = []
     for n in range(N):
         for m in range(M):
-            subimg =img[n*TRAIN_IMG_SIZE:(n+1)*TRAIN_IMG_SIZE,m*TRAIN_IMG_SIZE:(m+1)*TRAIN_IMG_SIZE]
+            subimg =img[n*SPLIT_IMG_SIZE:(n+1)*SPLIT_IMG_SIZE,m*SPLIT_IMG_SIZE:(m+1)*SPLIT_IMG_SIZE]
             subimg = cv2.resize(subimg,(50,50))
             subimgList.append(subimg)
-    return subimgList
+            iCoordinates.append((n*shape[0] + SPLIT_IMG_SIZE//2)-N//2)
+            jCoordinates.append(M//2-(m*shape[1] + SPLIT_IMG_SIZE//2))
+    return subimgList, iCoordinates, jCoordinates
 
-def yelloPixel(pix): #Check if a pixel is yellow
-    r, g, b = pix[0], pix[1], pix[2]
-    val = r < min(g,b)/1.4
-    val = val and min(g,b) > 70
-    val = val and max(g,b) < 1.3*min(g,b)
-
+def yellowPixel(pix): #Check if a pixel is yellow
+    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+    h, s, v = pix[0], pix[1], pix[2]
+    #lowYellow = np.array([20,50,55])
+    #highYellow = np.array([30,255,255])
+    val = h < 30 and h > 20 and s > 50 and v > 55
     return val
 
 def countYellow(img):
@@ -47,37 +60,89 @@ def countYellow(img):
     return N
 
 
-def findAll(subImages,model):
-    out = [0]*len(subImages)
-    predictions = model.predict(np.array(subImages)/255)
-    searchValues = [1,2,3,4]
-    for i in range(len(predictions)):
-        m = 0
-        for j in range(len(predictions[i])):
-            if(predictions[i][j] > predictions[i][m]):
-                m = j
-        if (m in searchValues):
-            out[i] = 1
-        elif(countYellow(subImages[i]) > 10):
-            out[i] =2
+def findAll(img):
+    subImages, iC, jC = createSubImages(img)
 
-    return out
+    smallest = 0
 
-def Action(allData, W, H):
-    #0:Straight Forward, 1: Right, 2: Left
-    N = len(found)//H
-    mid = N//2
-    min_angle = 4
-    min_pos = -1
+    out = []
+    n = 0
+    m = 0
 
-    for i in range(allData):
-        if(i == 1):
-            if(abs(mid-i%H) < abs(mid-min_pos)):
-                min_pos = i
+    for i in range(subImages):
+        if(countYellow(subImages[i]) > 50):
+            out.append(iC[i],jC[i])
+            if(abs(iC[i] < m or n == 0):
+                smallest = n
+                m = iC[i]
+            n += 1
 
-    if((min_pos-mid) > min_angle ):
-        return 1
-    elif((mid-min_pos) > min_angle or min_pos == -1):
-        return 2
+    return out, smallest
+
+def pixToAngle(i,j,conv): #Calculate angles to located object
+    x = i-W//2
+    y = j-H//2
+
+    alpha = tan(conv*x)
+    beta = tan(conv*y)
+
+    return alpha, beta
+
+def calculateDistance(h,alpha, alpha0):
+    dis = h*tan(alpha+alpha0)
+    return dis
+
+def calcCurveRadius(dis, beta):
+    #Calculate radius of curvature from distance to dandelion and angle from heading
+    if(abs(beta) < pi/10):
+        R = 0
+        a = 0
+    elif(beta > 0):
+        R = abs(dis*cos(beta)/sin(2*beta))
+        a = 1
     else:
-        return 0
+        R = abs(dis*cos(beta)/sin(2*beta))
+        a = 2
+    return R,a
+
+def realDistance(dis, beta, L):
+    disTrue = sqrt(dis**2+L**2+2*dis*L*cos(beta))
+    betaTrue = asin(dis/disTrue*sin(beta))
+
+    return disTrue,betaTrue
+
+
+def sendData(R,a):
+    ser.write((str(int(R))+ "."+str(a)+"\n").encode())
+    sleep(1)
+
+
+ser = serial.Serial("/dev/cu.usbmodem1421", 9600)
+sleep(3)
+
+R = calcCurveRadius(1000*sqrt(5), 0.463647609)
+
+a = 1
+
+cap = cv2.VideoCapture(0)
+
+print("Starting")
+
+
+while(True):
+    ret, img = cap.read()
+    img = readFromCamera()
+    yellow, smallest = findAll(img)
+
+    alpha, beta = pixToAngle(yellow[smallest][0],yellow[smallest][1],PIXLE_ANGLE_CONV)
+    D = calculateDistance(CAMERA_HEIGHT,alpha, CAMERA_ANGLE)
+
+    D,beta = realDistance(D, beta, CAMERA_POSITION)
+
+    R, a = calcCurveRadius(D, beta)
+    sendData(R,a)
+    print("R,a:",R,a)
+    line = ser.readline()
+    line = line.decode("ascii") #ser.readline returns a binary, convert to string
+    print(line)
+    sleep(50)

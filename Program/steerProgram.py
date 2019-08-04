@@ -12,16 +12,24 @@ from math import sin, cos, tan, pi, sqrt, asin
 import serial
 from time import sleep
 
-SPLIT_IMG_SIZE = 20
+SPLIT_IMG_SIZE = 40
 PIXLE_ANGLE_CONV = 0.28
 CAMERA_HEIGHT = 200
 CAMERA_ANGLE = 0.87
-CAMERA_POSITION = 40
+CAMERA_POSITION = 50
+MIN_CONTOUR_AREA = 2000
+
+SHOW_IMAGE = True
+PRINT_INFO = True
+
+def convXY(X,Y,shape):
+    X_new = X - shape[0]//2
+    Y_new = shape[1]//2 - Y
+    return X_new, Y_new
 
 def createSubImages(img):
     shape = (img.shape[0], img.shape[1]) #Shape of image
     N, M = shape[0]//SPLIT_IMG_SIZE, shape[1]//SPLIT_IMG_SIZE #amount of subimages
-    print("N,M:", N, M)
     subimgList = [] #List of all subimages
     iCoordinates = []
     jCoordinates = []
@@ -43,8 +51,8 @@ def yellowPixel(pix): #Check if a pixel is yellow
 def countYellow(img):
     N = 0
     i = 0
-    lowYellow = np.array([22,51,57])
-    highYellow=np.array([30,200,200])
+    lowYellow = np.array([26,65,115])
+    highYellow=np.array([31,255,255])
     hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lowYellow, highYellow)
 
@@ -64,7 +72,7 @@ def findAll(img):
     smallest = 0
 
     out = []
-    n = 0
+    n = -1
     m = 0
 
     for i in range(len(subImages)):
@@ -77,6 +85,51 @@ def findAll(img):
     print("All yellow found")
 
     return out, smallest
+
+
+
+def findAllFast(img):
+    lowYellow = np.array([20,120,90]) #Lowest yellow hsv value
+    highYellow=np.array([32,255,255]) #Highest yellow hsv value
+
+    #Convert image to hsv format to differentiate different colors better
+    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+
+
+    #Binary image where all yellow pixels have value 1
+    #and the rest have value 0
+    mask = cv2.inRange(hsv, lowYellow, highYellow)
+    window_handle = cv2.namedWindow('Mask', cv2.WINDOW_NORMAL)
+
+
+    #Find contours in the binary image
+    cont, hir =cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    i = 0
+    minY = -1
+    minX = -1
+    minIndex = -1
+    centroids = []
+    for c in cont:
+        if(cv2.contourArea(c) > MIN_CONTOUR_AREA):
+            M = cv2.moments(c) #Moments of current contour
+            if(M["m00"]!= 0):
+                cX = int(M["m10"]/M["m00"]) #X - coordinate of centroid
+                cY = int(M["m01"]/M["m00"]) #Y - coordinate of centroid
+                centroids.append((cX,cY))
+                if(cY > minY):
+                    minY = cY
+                    minX = cX
+                    minIndex = i
+                i += 1
+
+    if(minIndex == -1):
+        return None, -1,-1,[],[]
+    else:
+        return cont[minIndex], minX, minY, centroids, cont
+
+
+
+
 
 def pixToAngle(i,j,conv): #Calculate angles to located object
     x = i
@@ -119,41 +172,69 @@ def sendData(R,a):
 ser = serial.Serial("/dev/ttyACM0", 9600)
 sleep(3)
 
-R = calcCurveRadius(1000*sqrt(5), 0.463647609)
-
-a = 1
-
 cap = cv2.VideoCapture(0)
 
 
-#if cap.isOpened():
-    #window_handle = cv2.namedWindow('CSI Camera', cv2.WINDOW_AUTOSIZE)
-print("Starting")
+
+if(cap.isOpened() and SHOW_IMAGE):
+    window_handle = cv2.namedWindow('CSI Camera', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('CSI Camera', 900,900)
+    if(PRINT_INFO):
+        print("Starting")
+
+else:
+    print("Could not open camera, error")
+
+
 
 while(True):
+    #img = cv2.imread("../Images/IMG_0644 2.JPG")
     ret, img = cap.read()
-    #img = cv2.flip(img, 1)
-    #cv2.imshow('CSI Camera',img)
-    # This also acts as 
-    #keyCode = cv2.waitKey(1) & 0xff
-    # Stop the program on the ESC key
-    #if keyCode == 27:
-    #    break
+    shape = (img.shape[0], img.shape[1])
+    img = cv2.flip(img, 1)
 
-    print("Image Read")
-    yellow, smallest = findAll(img)
-    print("Smallest pos:", yellow[smallest][0], yellow[smallest][1])
-    alpha, beta = pixToAngle(yellow[smallest][0],yellow[smallest][1],PIXLE_ANGLE_CONV)
-    D = calculateDistance(CAMERA_HEIGHT,alpha, CAMERA_ANGLE)
-    print("Distance before:", D)
-    print("Angle before:", beta)
+    if(PRINT_INFO):
+        print("Image Read")
+    #yellow, smallest = findAll(img)
+    cont, X, Y, allCentroids, allContours = findAllFast(img)
+    if(Y > -1):
+        X_rel, Y_rel = convXY(X,Y,shape)
 
-    D, beta = realDistance(D, beta, CAMERA_POSITION)
-    print("Distance after:", D)
-    print("Angle after:", beta)
-    R, a = calcCurveRadius(D, beta)
+        if(PRINT_INFO):
+            print("Smallest pos:", X_rel, Y_rel)
+        alpha, beta = pixToAngle(X_rel, Y_rel,PIXLE_ANGLE_CONV)
+        D = calculateDistance(CAMERA_HEIGHT,alpha, CAMERA_ANGLE)
+        if(PRINT_INFO):
+            print("Distance before:", D)
+            print("Angle before:", beta)
+
+        D, beta = realDistance(D, beta, CAMERA_POSITION)
+        if(PRINT_INFO):
+            print("Distance after:", D)
+            print("Angle after:", beta)
+        R, a = calcCurveRadius(D, beta)
+        if(SHOW_IMAGE):
+            for c in allCentroids:
+                cv2.circle(img, c, 15, (255, 0, 255),-1)
+            i = 0
+
+            cv2.drawContours(img, allContours, -1, (0,255,0), 3)
+
+
+
+    else:
+        R = 0
+        a = 0
+    if(SHOW_IMAGE):
+        cv2.imshow('CSI Camera',img)
+        # This also acts as
+        keyCode = cv2.waitKey(1) & 0xff
+        # Stop the program on the ESC key
+        if keyCode == 27:
+            break
+
     print("R, a", R, a)
-    sendData(R,a)
+    #sendData(R,a)
     print("Data sent")
 
 
@@ -162,8 +243,8 @@ while(True):
     #line = line.decode("ascii") #ser.readline returns a binary, convert to string
     #print("Incoming line:",line)
 
-    
+
+
 
 cap.release()
 cv2.destroyAllWindows()
-
